@@ -21,15 +21,18 @@ The procedurally-implemented path planning state machine consists of the followi
 
 The planner evaluates the current state denoted by boolean variables and does a lookahead to pick the best lane based on current position and sensor fusion data in `changeLane` function. Then, if a lane change is needed, `safeToChangeLane` is a final check before executing the manouver. If the planner decides to execute a lane change, it is locked in `changing_lanes` state until the d-value matches the target lane, so that it does not get trapped inbetween lanes.
 
-An additional condition has been added to penalize occupying leftmost lanes unless it's necessary and always drive on the right if possible.
+An important capability of the planner is speed comparison of all lanes to always choose the fastest or empty one, as well as a condition to penalize occupying leftmost lanes unless it's necessary.
 
 ### Final remarks
  
 The simple path planner works well enough to provide smooth manouvers and maintain an acceptable pace on the highway. However there are several areas of improvement to consider for the future:
 
+- improve acceleration and braking oscilations (PID control?)
 - add states for "prepare lane change", using indicators etc - although the solution works, lane change safety could be improved
 - the planner obeys other regulations than just speed limit, like no passing on the right lane
 - refactor the code to be object oriented using `Car` instances with a proper state machine implementation (incl. states and transition functions) 
+
+![screenshot](https://github.com/grodowski/CarND-Path-Planning-Project/blob/master/Screen%20Shot%202017-11-12%20at%2023.13.46.png)
 
 ---
 Original Udacity readme starts below
