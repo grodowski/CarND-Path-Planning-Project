@@ -1,6 +1,39 @@
 # CarND-Path-Planning-Project
 Self-Driving Car Engineer Nanodegree Program
    
+## Model Documentation
+
+### Trajectory Generation
+
+The trajectory generator used by the solution works with 5 reference points including two previous locations and waypoints 30, 60 and 90 units ahead of the ego vehicle. These points are filled on each update event using current car position in Frenet coordinates, the desired lane. Later we convert them to map coordinates using the provided `getXY` function and given waypoints.
+
+A spline is fitted to the above 5 waypoints in car coordinates using the `spline.h` package. This allows us to generate the interpolated x,y pairs to feed to the simulator.
+
+Using `spline` with the waypoint approach suggested by the project walkthrough proved to generate paths smooth enough to pass all project requirements with respect to max acceleration and jerk.
+
+### Path planning state machine
+
+The procedurally-implemented path planning state machine consists of the following three states:
+
+- drive on lane
+- follow
+- change lane (transition may happen after a safety check)
+
+The planner evaluates the current state denoted by boolean variables and does a lookahead to pick the best lane based on current position and sensor fusion data in `changeLane` function. Then, if a lane change is needed, `safeToChangeLane` is a final check before executing the manouver. If the planner decides to execute a lane change, it is locked in `changing_lanes` state until the d-value matches the target lane, so that it does not get trapped inbetween lanes.
+
+An additional condition has been added to penalize occupying leftmost lanes unless it's necessary and always drive on the right if possible.
+
+### Final remarks
+ 
+The simple path planner works well enough to provide smooth manouvers and maintain an acceptable pace on the highway. However there are several areas of improvement to consider for the future:
+
+- add states for "prepare lane change", using indicators etc - although the solution works, lane change safety could be improved
+- the planner obeys other regulations than just speed limit, like no passing on the right lane
+- refactor the code to be object oriented using `Car` instances with a proper state machine implementation (incl. states and transition functions) 
+
+---
+Original Udacity readme starts below
+
 ### Simulator.
 You can download the Term3 Simulator which contains the Path Planning Project from the [releases tab (https://github.com/udacity/self-driving-car-sim/releases).
 
