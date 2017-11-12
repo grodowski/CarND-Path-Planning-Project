@@ -160,6 +160,34 @@ vector<double> getXY(double s, double d, const vector<double> &maps_s, const vec
 
 }
 
+double checkSpeed(vector<double> sensor_fusion_vec) {
+    double vx = sensor_fusion_vec[3];
+    double vy = sensor_fusion_vec[4];
+    return sqrt(vx * vx + vy * vy);
+}
+
+double getS(vector<double> sensor_fusion_vec, int prev_size) {
+    return sensor_fusion_vec[5] + (double)prev_size * .02 * checkSpeed(sensor_fusion_vec); // car_s + v * t
+}
+
+bool inLane(int lane, double d) {
+    return d < (2 + 4 * lane + 2) && d > (2 + 4 * lane - 2);
+}
+
+bool safeToChangeLane(int lane, double car_s, int prev_size, vector<vector<double>> sensor_fusion, double s_thr) {
+    // lane out of range
+    if (lane < 0 || lane > 2) return false;
+    
+    // check safe distance
+    vector<vector<double>> observable_cars_in_lane;
+    for (int i = 0; i < sensor_fusion.size(); i++) {
+        double d = sensor_fusion[i][6];
+        double s = getS(sensor_fusion[i], prev_size);
+        if (inLane(lane, d) && abs(car_s - s) < s_thr) observable_cars_in_lane.push_back(sensor_fusion[i]);
+    }
+    return observable_cars_in_lane.size() == 0;
+}
+
 int main() {
   uWS::Hub h;
 
@@ -199,9 +227,10 @@ int main() {
     
   int lane = 1;
   double ref_v = 0;
+  bool changing_lanes = false;
   static double SPEED_LIMIT = 49.5;
     
-  h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy,&lane,&ref_v](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+  h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy,&lane,&ref_v,&changing_lanes](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
@@ -246,29 +275,49 @@ int main() {
                 car_s = end_path_s;
             }
             bool too_close = false;
+            double v_follow = 0;
             
             // sensor fusion - check for car in front
             // sensor fusion has the format [car_id, x, y, vx, vy, s, d]
             for (int i = 0; i < sensor_fusion.size(); i++) {
                 float d = sensor_fusion[i][6];
-                if (d < (2 + 4 * lane + 2) && d > (2 + 4 * lane - 2)) {
-                    double vx = sensor_fusion[i][3];
-                    double vy = sensor_fusion[i][4];
-                    double check_speed = sqrt(vx * vx + vy * vy);
-                    double check_car_s = sensor_fusion[i][5];
-                    
-                    check_car_s += (double)prev_size * .02 * check_speed;
-                    
-                    if (check_car_s > car_s && check_car_s - car_s < 30) {
-                        // TODO: do some logic
+                if (inLane(lane, d)) {
+                    double check_car_s = getS(sensor_fusion[i], prev_size);
+                    if (check_car_s > car_s && check_car_s - car_s < 20) {
                         too_close = true;
-                        lane = 0;
+                        v_follow = checkSpeed(sensor_fusion[i]);
                         cout << "too close, car: " << i << ", car_s: " << check_car_s << " " << sensor_fusion[i] << endl;
                     }
                 }
             }
             
-            if (too_close) {
+            if (changing_lanes && inLane(lane, car_d)) {
+                cout << "lane change success: d:" << car_d << " lane: " << lane << endl;
+                changing_lanes = false;
+            }
+            
+            // choose lane to change if following a car
+            // safe to change ?, worth changing? change : follow
+            if (too_close && !changing_lanes) {
+                if (safeToChangeLane(lane - 1, car_s, prev_size, sensor_fusion, 7)) {
+                    lane -= 1;
+                    changing_lanes = true;
+                } else if (safeToChangeLane(lane + 1, car_s, prev_size, sensor_fusion, 7)) {
+                    lane += 1;
+                    changing_lanes = true;
+                }
+            } else if (!changing_lanes && lane != 2 && safeToChangeLane(lane + 1, car_s, prev_size, sensor_fusion, 30)) {
+                // be a good citizen, go back to right lane
+                lane += 1;
+                changing_lanes = true;
+            }
+            
+            if (changing_lanes) {
+                cout << "in lane change! lane: " << lane << endl;
+            }
+            
+            // slow down if following a car, speed up otherwise
+            if (too_close && ref_v > v_follow) {
                 ref_v -= .224;
             } else if (ref_v < SPEED_LIMIT) {
                 ref_v += .224;
