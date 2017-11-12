@@ -171,7 +171,14 @@ double getS(vector<double> sensor_fusion_vec, int prev_size) {
 }
 
 bool inLane(int lane, double d) {
-    return d < (2 + 4 * lane + 2) && d > (2 + 4 * lane - 2);
+    return d < (4 * lane + 4) && d > (4 * lane);
+}
+
+int getLane(double d) {
+    if (d < 4) return 0;
+    else if (d >= 4 && d < 8) return 1;
+    else if (d >= 8 && d < 12) return 2;
+    else return -1;
 }
 
 bool safeToChangeLane(int lane, double car_s, int prev_size, vector<vector<double>> sensor_fusion, double s_thr) {
@@ -186,6 +193,41 @@ bool safeToChangeLane(int lane, double car_s, int prev_size, vector<vector<doubl
         if (inLane(lane, d) && abs(car_s - s) < s_thr) observable_cars_in_lane.push_back(sensor_fusion[i]);
     }
     return observable_cars_in_lane.size() == 0;
+}
+
+// choose best lane to change to
+int changeLane(int lane, double car_s, int prev_size, vector<vector<double>> sensor_fusion) {
+    // return empty lane or lane with highest speed if all are occupied
+    double lane_speeds[3] = {};
+    for (int i = 0; i < sensor_fusion.size(); i++) {
+        double d = sensor_fusion[i][6];
+        double check_car_s = getS(sensor_fusion[i], prev_size);
+        if (check_car_s > car_s && check_car_s - car_s < 80) {
+            lane_speeds[getLane(d)] = checkSpeed(sensor_fusion[i]);
+        }
+    }
+    double max_spd = 0.0;
+    int res_lane = 0;
+    for (int j = 0; j < 3; j++) {
+        if (lane_speeds[j] == 0) {
+            max_spd = 50.0;
+            res_lane = j;
+            cout << "changeLane: lane " << j << " is empty!" << endl;
+            continue;
+        }
+        if (lane_speeds[j] > max_spd) {
+            max_spd = lane_speeds[j];
+            res_lane = j;
+        }
+    }
+    int diff = abs(lane - res_lane);
+    if (diff > 1 && res_lane > lane) {
+        res_lane -= 1;
+    } else if (diff > 1 && res_lane < lane) {
+        res_lane += 1;
+    }
+    cout << "changeLane: suggested stay on " << res_lane << ", v: " << max_spd << endl;
+    return res_lane;;
 }
 
 int main() {
@@ -299,22 +341,21 @@ int main() {
             // choose lane to change if following a car
             // safe to change ?, worth changing? change : follow
             if (too_close && !changing_lanes) {
-                if (safeToChangeLane(lane - 1, car_s, prev_size, sensor_fusion, 7)) {
-                    lane -= 1;
-                    changing_lanes = true;
-                } else if (safeToChangeLane(lane + 1, car_s, prev_size, sensor_fusion, 7)) {
-                    lane += 1;
+                int new_lane = changeLane(lane, car_s, prev_size, sensor_fusion);
+                
+                if (new_lane != lane && safeToChangeLane(new_lane, car_s, prev_size, sensor_fusion, 10)) {
+                    lane = new_lane;
                     changing_lanes = true;
                 }
-            } else if (!changing_lanes && lane != 2 && safeToChangeLane(lane + 1, car_s, prev_size, sensor_fusion, 30)) {
+            } else if (!changing_lanes && lane != 2 && safeToChangeLane(lane + 1, car_s, prev_size, sensor_fusion, 60)) {
                 // be a good citizen, go back to right lane
                 lane += 1;
                 changing_lanes = true;
             }
             
-            if (changing_lanes) {
-                cout << "in lane change! lane: " << lane << endl;
-            }
+//            if (changing_lanes) {
+//                cout << "in lane change! lane: " << lane << endl;
+//            }
             
             // slow down if following a car, speed up otherwise
             if (too_close && ref_v > v_follow) {
